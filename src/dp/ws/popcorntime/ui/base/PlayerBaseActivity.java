@@ -2,6 +2,23 @@ package dp.ws.popcorntime.ui.base;
 
 import java.io.File;
 
+import dp.ws.popcorntime.PopcornApplication;
+import dp.ws.popcorntime.R;
+import dp.ws.popcorntime.googlecast.CastPopcornListener;
+import dp.ws.popcorntime.googlecast.GoogleCast;
+import dp.ws.popcorntime.model.LoaderResponse;
+import dp.ws.popcorntime.model.videoinfo.VideoInfo;
+import dp.ws.popcorntime.subtitles.SubtitleCallbacks;
+import dp.ws.popcorntime.subtitles.Subtitles;
+import dp.ws.popcorntime.subtitles.format.VTT;
+import dp.ws.popcorntime.torrent.PopcornTorrent;
+import dp.ws.popcorntime.torrent.VideoResult;
+import dp.ws.popcorntime.torrent.VideoTaskCallbacks;
+import dp.ws.popcorntime.ui.locale.LocaleDialogFragment;
+import dp.ws.popcorntime.ui.locale.LocaleFragmentActivity;
+import dp.ws.popcorntime.utils.ExtGenericFilter;
+import dp.ws.popcorntime.utils.StorageHelper;
+
 import org.apache.commons.io.FileUtils;
 import org.videolan.libvlc.LibVLC;
 
@@ -21,24 +38,9 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import dp.ws.popcorntime.PopcornApplication;
-import dp.ws.popcorntime.R;
-import dp.ws.popcorntime.googlecast.CastPopcornListener;
-import dp.ws.popcorntime.googlecast.GoogleCast;
-import dp.ws.popcorntime.model.LoaderResponse;
-import dp.ws.popcorntime.model.videoinfo.VideoInfo;
-import dp.ws.popcorntime.subtitles.SubtitleCallbacks;
-import dp.ws.popcorntime.subtitles.Subtitles;
-import dp.ws.popcorntime.subtitles.format.VTT;
-import dp.ws.popcorntime.torrent.PopcornTorrent;
-import dp.ws.popcorntime.torrent.VideoResult;
-import dp.ws.popcorntime.torrent.VideoTaskCallbacks;
-import dp.ws.popcorntime.ui.locale.LocaleDialogFragment;
-import dp.ws.popcorntime.ui.locale.LocaleFragmentActivity;
-import dp.ws.popcorntime.utils.ExtGenericFilter;
-import dp.ws.popcorntime.utils.StorageHelper;
 
 public abstract class PlayerBaseActivity extends LocaleFragmentActivity implements VideoTaskCallbacks, CastPopcornListener, LoaderCallbacks<LoaderResponse>,
 		SubtitleCallbacks {
@@ -58,6 +60,13 @@ public abstract class PlayerBaseActivity extends LocaleFragmentActivity implemen
 	protected Button mCloseButton;
 	private VideoInfo mVideoInfo;
 	private String mVideoPath;
+	
+	private View mOverlayProgress;
+	private View mOverlayBackground;
+	private View mOverlayHeader;
+	private View mOverlayOption;
+	private ImageButton mPlayPause;
+	private ImageView mCone;
 
 	// torrent
 	protected PopcornTorrent mTorrent;
@@ -96,6 +105,20 @@ public abstract class PlayerBaseActivity extends LocaleFragmentActivity implemen
 		mTorrent.onCreate(getApplicationContext());
 		mTorrentProgressBar = (ProgressBar) findViewById(R.id.torrent_progress_bar);
 		mTorrentProgressText = (TextView) findViewById(R.id.torrent_progress_text);
+		mOverlayProgress = findViewById(R.id.progress_overlay);
+		mOverlayHeader = findViewById(R.id.player_overlay_header);
+		mOverlayOption = findViewById(R.id.option_overlay);
+		mOverlayBackground = findViewById(R.id.player_overlay_background);
+		mPlayPause = (ImageButton) findViewById(R.id.player_overlay_play);
+		mCone = (ImageView) findViewById(R.id.player_overlay_cone);
+		
+		mOverlayProgress.setVisibility(View.INVISIBLE);
+		mOverlayHeader.setVisibility(View.INVISIBLE);
+		mOverlayOption.setVisibility(View.INVISIBLE);
+		mPlayPause.setVisibility(View.INVISIBLE);
+		if(mCone != null) {
+			mCone.setVisibility(View.INVISIBLE);
+		}
 
 		mRouteButton = (MediaRouteButton) findViewById(R.id.media_route_button);
 		mGoogleCast = new GoogleCast(PlayerBaseActivity.this, PlayerBaseActivity.this);
@@ -172,6 +195,10 @@ public abstract class PlayerBaseActivity extends LocaleFragmentActivity implemen
 			mCloseButton.setVisibility(View.INVISIBLE);
 			mTorrentProgressBar.setVisibility(View.INVISIBLE);
 			mTorrentProgressText.setVisibility(View.INVISIBLE);
+			
+			if(mCone != null) {
+				mOverlayBackground.setVisibility(View.INVISIBLE);
+			}
 
 			mLocation = mTorrent.getFileLocation();
 			mVideoPath = mLocation.replace("file://", "");
