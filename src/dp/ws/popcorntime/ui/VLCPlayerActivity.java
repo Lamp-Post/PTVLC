@@ -24,6 +24,10 @@ import java.lang.reflect.Method;
 import java.util.Date;
 import java.util.Map;
 
+import dp.ws.popcorntime.R;
+import dp.ws.popcorntime.torrent.VideoResult;
+import dp.ws.popcorntime.ui.base.PlayerBaseActivity;
+
 import org.videolan.libvlc.EventHandler;
 import org.videolan.libvlc.IVideoPlayer;
 import org.videolan.libvlc.LibVLC;
@@ -42,7 +46,9 @@ import org.videolan.vlc.util.VLCInstance;
 import org.videolan.vlc.util.WeakHandler;
 
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Presentation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -55,6 +61,7 @@ import android.graphics.Color;
 import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
 import android.media.AudioManager;
+import android.media.MediaRouter;
 import android.media.AudioManager.OnAudioFocusChangeListener;
 import android.os.Build;
 import android.os.Bundle;
@@ -85,9 +92,6 @@ import android.widget.TextView;
 
 import com.softwarrior.libtorrent.TorrentState;
 
-import dp.ws.popcorntime.R;
-import dp.ws.popcorntime.torrent.VideoResult;
-import dp.ws.popcorntime.ui.base.PlayerBaseActivity;
 
 public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlayer {
 	public final static String TAG = "VLC/VideoPlayerActivity";
@@ -102,9 +106,9 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	private SurfaceHolder mSurfaceHolder;
 	private SurfaceHolder mSubtitlesSurfaceHolder;
 	private FrameLayout mSurfaceFrame;
-	// private MediaRouter mMediaRouter;
-	// private MediaRouter.SimpleCallback mMediaRouterCallback;
-	// private SecondaryDisplay mPresentation;
+	private MediaRouter mMediaRouter;
+	private MediaRouter.SimpleCallback mMediaRouterCallback;
+	 private SecondaryDisplay mPresentation;
 	// private LibVLC mLibVLC;
 	// private String mLocation;
 
@@ -123,7 +127,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	private View mOverlayHeader;
 	private View mOverlayOption;
 	private View mOverlayProgress;
-	// private View mOverlayBackground;
+	//private View mOverlayBackground;
 	private static final int OVERLAY_TIMEOUT = 4000;
 	private static final int OVERLAY_INFINITE = 3600000;
 	private static final int FADE_OUT = 1;
@@ -142,14 +146,12 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	private TextView mTime;
 	private TextView mLength;
 	private TextView mInfo;
-	// private ImageView mLoading;
-	// private TextView mLoadingText;
 	private ImageButton mPlayPause;
 	private ImageButton mBackward;
 	private ImageButton mForward;
 	// private boolean mEnableJumpButtons;
 	private boolean mEnableBrightnessGesture;
-	// private boolean mEnableCloneMode;
+	private boolean mEnableCloneMode;
 	private boolean mDisplayRemainingTime = false;
 	private int mScreenOrientation;
 	private ImageButton mAudioTrack;
@@ -207,18 +209,42 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	 */
 	// private final ArrayList<String> mSubtitleSelectedFiles = new
 	// ArrayList<String>();
+	
+    // Whether fallback from HW acceleration to SW decoding was done.
+    private boolean mDisabledHardwareAcceleration = false;
+    private int mPreviousHardwareAccelerationMode;
+	
+    // Tips
+    //private View mOverlayTips;
+    //private static final String PREF_TIPS_SHOWN = "video_player_tips_shown";
 
 	@Override
 	@TargetApi(Build.VERSION_CODES.JELLY_BEAN)
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 
+        if (LibVlcUtil.isJellyBeanMR1OrLater()) {
+            // Get the media router service (Miracast)
+            mMediaRouter = (MediaRouter) getSystemService(Context.MEDIA_ROUTER_SERVICE);
+            mMediaRouterCallback = new MediaRouter.SimpleCallback() {
+                @Override
+                public void onRoutePresentationDisplayChanged(
+                        MediaRouter router, MediaRouter.RouteInfo info) {
+                    Log.d(TAG, "onRoutePresentationDisplayChanged: info=" + info);
+                    removePresentation();
+                }
+            };
+            Log.d(TAG, "MediaRouter information : " + mMediaRouter  .toString());
+        }
+		
 		mSettings = PreferenceManager.getDefaultSharedPreferences(this);
 
 		/* Services and miscellaneous */
 		mAudioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 		mAudioMax = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
 
+        mEnableCloneMode = mSettings.getBoolean("enable_clone_mode", false);
+        createPresentation();
 		setContentView(R.layout.activity_video_player);
 
 		if (LibVlcUtil.isICSOrLater())
@@ -325,12 +351,6 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 
 		initPopcorn();
 
-		/* Loading view */
-		// mLoading = (ImageView) findViewById(R.id.player_overlay_loading);
-		// mLoadingText = (TextView)
-		// findViewById(R.id.player_overlay_loading_text);
-		// startLoadingAnimation();
-
 		mSwitchingView = false;
 		mEndReached = false;
 
@@ -349,15 +369,14 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		filter.addAction(VLCApplication.SLEEP_INTENT);
 		registerReceiver(mReceiver, filter);
 
-		// if (mPresentation != null &&
-		// !mSettings.getBoolean("enable_secondary_display_hardware_acceleration",
-		// false)) {
-		// mDisabledHardwareAcceleration = true;
-		// mPreviousHardwareAccelerationMode =
-		// mLibVLC.getHardwareAcceleration();
-		// mLibVLC.setHardwareAcceleration(LibVLC.HW_ACCELERATION_DISABLED);
-		// Log.d(TAG, "Secondary Display: Hardware acceleration disabled");
-		// }
+		 if (mPresentation != null &&
+		 !mSettings.getBoolean("enable_secondary_display_hardware_acceleration",
+		 false)) {
+		 mDisabledHardwareAcceleration = true;
+		 mPreviousHardwareAccelerationMode = mLibVLC.getHardwareAcceleration();
+		 mLibVLC.setHardwareAcceleration(LibVLC.HW_ACCELERATION_DISABLED);
+		 Log.d(TAG, "Secondary Display: Hardware acceleration disabled");
+		 }
 		Log.d(TAG, "Hardware acceleration mode: " + Integer.toString(mLibVLC.getHardwareAcceleration()));
 
 		/* Only show the subtitles surface when using "Full Acceleration" mode */
@@ -373,12 +392,12 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		this.setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		// Extra initialization when no secondary display is detected
-		// if (mPresentation == null) {
-		// Orientation
-		// 100 is the value for screen_orientation_start_lock
-		// setRequestedOrientation(mScreenOrientation != 100 ?
-		// mScreenOrientation : getScreenOrientation());
-		// Tips
+		 if (mPresentation == null) {
+		 // Orientation
+		 // 100 is the value for screen_orientation_start_lock
+		 setRequestedOrientation(mScreenOrientation != 100 ?
+		 mScreenOrientation : getScreenOrientation());
+		 // Tips
 		// mOverlayTips = findViewById(R.id.player_overlay_tips);
 		// if (mSettings.getBoolean(PREF_TIPS_SHOWN, false))
 		// mOverlayTips.setVisibility(View.GONE);
@@ -386,15 +405,20 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		// mOverlayTips.bringToFront();
 		// mOverlayTips.invalidate();
 		// }
-		// } else
-		// setRequestedOrientation(getScreenOrientation());
+		 } else
+		 setRequestedOrientation(getScreenOrientation());
 
-		// updateNavStatus();
+		 //updateNavStatus();
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
+		
+		if (mMediaRouter != null) {
+		// Listen for changes to media routes.
+		mediaRouterAddCallback(true);
+		}
 
 		if (mSwitchingView) {
 			AudioServiceController.getInstance().showWithoutParse(savedIndexPosition);
@@ -435,12 +459,12 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		super.onStop();
 
 		// Dismiss the presentation when the activity is not visible.
-		// if (mPresentation != null) {
-		// Log.i(TAG,
-		// "Dismissing presentation because the activity is no longer visible.");
-		// mPresentation.dismiss();
-		// mPresentation = null;
-		// }
+		 if (mPresentation != null) {
+		 Log.i(TAG,
+		 "Dismissing presentation because the activity is no longer visible.");
+		 mPresentation.dismiss();
+		 mPresentation = null;
+		 }
 	}
 
 	@Override
@@ -451,15 +475,11 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 			EventHandler em = EventHandler.getInstance();
 			em.removeHandler(eventHandler);
 
-			// MediaCodec opaque direct rendering should not be used anymore
-			// since
-			// there is no surface to attach.
+			// MediaCodec opaque direct rendering should not be used anymore since there is no surface to attach.
 			mLibVLC.eventVideoPlayerActivityCreated(false);
-			// HW acceleration was temporarily disabled because of an error,
-			// restore
-			// the previous value.
-			// if (mDisabledHardwareAcceleration)
-			// mLibVLC.setHardwareAcceleration(mPreviousHardwareAccelerationMode);
+			// HW acceleration was temporarily disabled because of an error, restore the previous value.
+			if (mDisabledHardwareAcceleration)
+			   mLibVLC.setHardwareAcceleration(mPreviousHardwareAccelerationMode);
 
 			mAudioManager = null;
 		} catch (Exception ex) {
@@ -486,11 +506,27 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 			});
 		}
 
-		// if (mMediaRouter != null) {
-		// // Listen for changes to media routes.
-		// mediaRouterAddCallback(true);
-		// }
+		if (mMediaRouter != null) {
+		// Listen for changes to media routes.
+		mediaRouterAddCallback(true);
+		}
 	}
+	
+    /**
+     * Add or remove MediaRouter callbacks. This is provided for version targeting.
+     *
+     * @param add true to add, false to remove
+     */
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+    private void mediaRouterAddCallback(boolean add) {
+        if(!LibVlcUtil.isJellyBeanMR1OrLater() || mMediaRouter == null) return;
+
+        if(add)
+            mMediaRouter.addCallback(MediaRouter.ROUTE_TYPE_LIVE_VIDEO, mMediaRouterCallback);
+        else
+            mMediaRouter.removeCallback(mMediaRouterCallback);
+    }
+
 
 	/**
 	 * TODO: torrent logic
@@ -808,8 +844,8 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 				break;
 			case EventHandler.MediaPlayerPlaying:
 				Log.i(TAG, "MediaPlayerPlaying");
-				// activity.stopLoadingAnimation();
-				// activity.showOverlay();
+				//activity.stopLoadingAnimation();
+				activity.showOverlay();
 				activity.setESTrackLists(true);
 				activity.setESTracks();
 				activity.changeAudioFocus(true);
@@ -984,24 +1020,24 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		int sh;
 
 		// get screen size
-		// if (mPresentation == null) {
+		 if (mPresentation == null) {
 		sw = getWindow().getDecorView().getWidth();
 		sh = getWindow().getDecorView().getHeight();
-		// } else {
-		// sw = mPresentation.getWindow().getDecorView().getWidth();
-		// sh = mPresentation.getWindow().getDecorView().getHeight();
-		// }
+		 } else {
+		 sw = mPresentation.getWindow().getDecorView().getWidth();
+		 sh = mPresentation.getWindow().getDecorView().getHeight();
+		 }
 
 		double dw = sw, dh = sh;
 		boolean isPortrait;
 
-		// if (mPresentation == null) {
+		 if (mPresentation == null) {
 		// getWindow().getDecorView() doesn't always take orientation into
 		// account, we have to correct the values
 		isPortrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-		// } else {
-		// isPortrait = false;
-		// }
+		 } else {
+		 isPortrait = false;
+		 }
 
 		if (sw > sh && isPortrait || sw < sh && !isPortrait) {
 			dw = sh;
@@ -1070,19 +1106,19 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		SurfaceHolder subtitlesSurfaceHolder;
 		FrameLayout surfaceFrame;
 
-		// if (mPresentation == null) {
+		 if (mPresentation == null) {
 		surface = mSurface;
 		subtitlesSurface = mSubtitlesSurface;
 		surfaceHolder = mSurfaceHolder;
 		subtitlesSurfaceHolder = mSubtitlesSurfaceHolder;
 		surfaceFrame = mSurfaceFrame;
-		// } else {
-		// surface = mPresentation.mSurface;
-		// subtitlesSurface = mPresentation.mSubtitlesSurface;
-		// surfaceHolder = mPresentation.mSurfaceHolder;
-		// subtitlesSurfaceHolder = mPresentation.mSubtitlesSurfaceHolder;
-		// surfaceFrame = mPresentation.mSurfaceFrame;
-		// }
+		 } else {
+		 surface = mPresentation.mSurface;
+		 subtitlesSurface = mPresentation.mSubtitlesSurface;
+		 surfaceHolder = mPresentation.mSurfaceHolder;
+		 subtitlesSurfaceHolder = mPresentation.mSubtitlesSurfaceHolder;
+		 surfaceFrame = mPresentation.mSurfaceFrame;
+		 }
 
 		// force surface buffer size
 		surfaceHolder.setFixedSize(mVideoWidth, mVideoHeight);
@@ -1612,8 +1648,9 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 				dimStatusBar(false);
 			}
 			mOverlayProgress.setVisibility(View.VISIBLE);
-			// if (mPresentation != null)
-			// mOverlayBackground.setVisibility(View.VISIBLE);
+			 if (mPresentation != null) {
+			 //mOverlayBackground.setVisibility(View.VISIBLE);
+			 }
 		}
 		Message msg = mHandler.obtainMessage(FADE_OUT);
 		if (timeout != 0) {
@@ -1630,8 +1667,8 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		if (mShowing) {
 			mHandler.removeMessages(SHOW_PROGRESS);
 			Log.i(TAG, "remove View!");
-			// if (mOverlayTips != null)
-			// mOverlayTips.setVisibility(View.INVISIBLE);
+			//if (mOverlayTips != null)
+			//mOverlayTips.setVisibility(View.INVISIBLE);
 			if (!fromUser && !mIsLocked) {
 				mCloseButton.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
 				mOverlayHeader.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
@@ -1641,11 +1678,11 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 				// mMenu.startAnimation(AnimationUtils.loadAnimation(this,
 				// android.R.anim.fade_out));
 			}
-			// if (mPresentation != null) {
-			// mOverlayBackground.startAnimation(AnimationUtils.loadAnimation(this,
-			// android.R.anim.fade_out));
-			// mOverlayBackground.setVisibility(View.INVISIBLE);
-			// }
+			 if (mPresentation != null) {
+			 //mOverlayBackground.startAnimation(AnimationUtils.loadAnimation(this,
+			 //android.R.anim.fade_out));
+			 //mOverlayBackground.setVisibility(View.INVISIBLE);
+			 }
 			mCloseButton.setVisibility(View.INVISIBLE);
 			mOverlayHeader.setVisibility(View.INVISIBLE);
 			mOverlayOption.setVisibility(View.INVISIBLE);
@@ -1684,12 +1721,12 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 			mPlayPause.setBackgroundResource(mLibVLC.isPlaying() ? R.drawable.ic_pause_circle : R.drawable.ic_play_circle);
 		}
 
-		// if (mPresentation == null)
-		// mPlayPause.setBackgroundResource(mLibVLC.isPlaying() ?
-		// R.drawable.ic_pause_circle : R.drawable.ic_play_circle);
-		// else
-		// mPlayPause.setBackgroundResource(mLibVLC.isPlaying() ?
-		// R.drawable.ic_pause_circle_big_o : R.drawable.ic_play_circle_big_o);
+		 if (mPresentation == null)
+		 mPlayPause.setBackgroundResource(mLibVLC.isPlaying() ?
+		 R.drawable.ic_pause_circle : R.drawable.ic_play_circle);
+		 else
+		 mPlayPause.setBackgroundResource(mLibVLC.isPlaying() ?
+		 R.drawable.ic_pause_circle_big_o : R.drawable.ic_play_circle_big_o);
 	}
 
 	/**
@@ -1870,4 +1907,119 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	public void showAdvancedOptions(View v) {
 		CommonDialogs.advancedOptions(this, v, MenuType.Video);
 	}
+@TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+private void createPresentation() {
+    if (mMediaRouter == null || mEnableCloneMode)
+        return;
+
+    // Get the current route and its presentation display.
+    MediaRouter.RouteInfo route = mMediaRouter.getSelectedRoute(
+        MediaRouter.ROUTE_TYPE_LIVE_VIDEO);
+
+    Display presentationDisplay = route != null ? route.getPresentationDisplay() : null;
+
+    if (presentationDisplay != null) {
+        // Show a new presentation if possible.
+        Log.i(TAG, "Showing presentation on display: " + presentationDisplay);
+        mPresentation = new SecondaryDisplay(this, presentationDisplay);
+        mPresentation.setOnDismissListener(mOnDismissListener);
+        try {
+            mPresentation.show();
+        } catch (WindowManager.InvalidDisplayException ex) {
+            Log.w(TAG, "Couldn't show presentation!  Display was removed in "
+                    + "the meantime.", ex);
+            mPresentation = null;
+        }
+    } else
+        Log.i(TAG, "No secondary display detected");
+}
+
+@TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+private void removePresentation() {
+    if (mMediaRouter == null)
+        return;
+
+    // Dismiss the current presentation if the display has changed.
+    Log.i(TAG, "Dismissing presentation because the current route no longer "
+            + "has a presentation display.");
+    mLibVLC.pause(); // Stop sending frames to avoid a crash.
+    finish(); //TODO restore the video on the new display instead of closing
+    if (mPresentation != null) mPresentation.dismiss();
+    mPresentation = null;
+}
+
+/**
+ * Listens for when presentations are dismissed.
+ */
+private final DialogInterface.OnDismissListener mOnDismissListener = new DialogInterface.OnDismissListener() {
+    @Override
+    public void onDismiss(DialogInterface dialog) {
+        if (dialog == mPresentation) {
+            Log.i(TAG, "Presentation was dismissed.");
+            mPresentation = null;
+        }
+    }
+};
+
+@TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+private final class SecondaryDisplay extends Presentation {
+    public final static String TAG = "VLC/SecondaryDisplay";
+
+    private SurfaceView mSurface;
+    private SurfaceView mSubtitlesSurface;
+    private SurfaceHolder mSurfaceHolder;
+    private SurfaceHolder mSubtitlesSurfaceHolder;
+    private FrameLayout mSurfaceFrame;
+    private LibVLC mLibVLC;
+
+    public SecondaryDisplay(Context context, Display display) {
+        super(context, display);
+        if (context instanceof Activity) {
+            setOwnerActivity((Activity) context);
+        }
+        try {
+            mLibVLC = VLCInstance.getLibVlcInstance();
+        } catch (LibVlcException e) {
+            Log.d(TAG, "LibVLC initialisation failed");
+            return;
+        }
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.player_remote);
+
+        mSurface = (SurfaceView) findViewById(R.id.remote_player_surface);
+        mSurfaceHolder = mSurface.getHolder();
+        mSurfaceFrame = (FrameLayout) findViewById(R.id.remote_player_surface_frame);
+        String chroma = mSettings.getString("chroma_format", "");
+        if(LibVlcUtil.isGingerbreadOrLater() && chroma.equals("YV12")) {
+            mSurfaceHolder.setFormat(ImageFormat.YV12);
+        } else if (chroma.equals("RV16")) {
+            mSurfaceHolder.setFormat(PixelFormat.RGB_565);
+        } else {
+            mSurfaceHolder.setFormat(PixelFormat.RGBX_8888);
+        }
+
+        VLCPlayerActivity activity = (VLCPlayerActivity) getOwnerActivity();
+        if (activity == null) {
+            Log.e(TAG, "Failed to get the VideoPlayerActivity instance, secondary display won't work");
+            return;
+        }
+
+        mSurfaceHolder.addCallback(activity.mSurfaceCallback);
+
+        mSubtitlesSurface = (SurfaceView) findViewById(R.id.remote_subtitles_surface);
+        mSubtitlesSurfaceHolder = mSubtitlesSurface.getHolder();
+        mSubtitlesSurfaceHolder.setFormat(PixelFormat.RGBA_8888);
+        mSubtitlesSurface.setZOrderMediaOverlay(true);
+        mSubtitlesSurfaceHolder.addCallback(activity.mSubtitlesSurfaceCallback);
+
+        /* Only show the subtitles surface when using "Full Acceleration" mode */
+        if (mLibVLC != null && mLibVLC.getHardwareAcceleration() == LibVLC.HW_ACCELERATION_FULL)
+            mSubtitlesSurface.setVisibility(View.VISIBLE);
+        Log.i(TAG, "Secondary display created");
+    }
+}
 }
