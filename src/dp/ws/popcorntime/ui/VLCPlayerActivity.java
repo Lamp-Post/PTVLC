@@ -1940,7 +1940,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
             Log.i(TAG, "No secondary display detected");
     }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     private void removePresentation() {
         if (mMediaRouter == null)
             return;
@@ -1967,7 +1967,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
         }
     };
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     private final class SecondaryDisplay extends Presentation {
     public final static String TAG = "VLC/SecondaryDisplay";
 
