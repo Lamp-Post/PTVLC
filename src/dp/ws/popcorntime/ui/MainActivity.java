@@ -311,7 +311,7 @@ public class MainActivity extends PopcornLoadActivity implements LoaderCallbacks
 
 			@Override
 			public void run() {
-				setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+				setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
 				setPopcornSplashVisible(false);
 			}
 		}, SPLASH_SHOW_TIME);
