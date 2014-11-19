@@ -126,7 +126,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	private View mOverlayHeader;
 	private View mOverlayOption;
 	private View mOverlayProgress;
-	// private View mOverlayBackground;
+	private View mOverlayBackground;
 	private static final int OVERLAY_TIMEOUT = 4000;
 	private static final int OVERLAY_INFINITE = 3600000;
 	private static final int FADE_OUT = 1;
@@ -243,7 +243,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
         mEnableCloneMode = mSettings.getBoolean("enable_clone_mode", false);
         createPresentation();
 
-		setContentView(R.layout.activity_video_player);
+		setContentView(mPresentation == null ? R.layout.activity_video_player : R.layout.activity_player_remote_control);
 
 		if (LibVlcUtil.isICSOrLater())
 			getWindow().getDecorView().findViewById(android.R.id.content).setOnSystemUiVisibilityChangeListener(new OnSystemUiVisibilityChangeListener() {
@@ -263,7 +263,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		mOverlayHeader = findViewById(R.id.player_overlay_header);
 		mOverlayOption = findViewById(R.id.option_overlay);
 		mOverlayProgress = findViewById(R.id.progress_overlay);
-		// mOverlayBackground = findViewById(R.id.player_overlay_background);
+	    mOverlayBackground = findViewById(R.id.player_overlay_background);
 
 		/* header */
 		mTitle = (TextView) findViewById(R.id.player_overlay_title);
@@ -1653,8 +1653,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 				dimStatusBar(false);
 			}
 			mOverlayProgress.setVisibility(View.VISIBLE);
-			// if (mPresentation != null)
-			// mOverlayBackground.setVisibility(View.VISIBLE);
+			 if (mPresentation != null) mOverlayBackground.setVisibility(View.VISIBLE);
 		}
 		Message msg = mHandler.obtainMessage(FADE_OUT);
 		if (timeout != 0) {
@@ -1682,11 +1681,10 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 				// mMenu.startAnimation(AnimationUtils.loadAnimation(this,
 				// android.R.anim.fade_out));
 			}
-			// if (mPresentation != null) {
-			// mOverlayBackground.startAnimation(AnimationUtils.loadAnimation(this,
-			// android.R.anim.fade_out));
-			// mOverlayBackground.setVisibility(View.INVISIBLE);
-			// }
+			 if (mPresentation != null) {
+			     mOverlayBackground.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_out));
+			     mOverlayBackground.setVisibility(View.INVISIBLE);
+			 }
 			mCloseButton.setVisibility(View.INVISIBLE);
 			mOverlayHeader.setVisibility(View.INVISIBLE);
 			mOverlayOption.setVisibility(View.INVISIBLE);
@@ -1913,7 +1911,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		CommonDialogs.advancedOptions(this, v, MenuType.Video);
 	}
 	
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     private void createPresentation() {
         if (mMediaRouter == null || mEnableCloneMode)
             return;
@@ -1967,7 +1965,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
         }
     };
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
     private final class SecondaryDisplay extends Presentation {
     public final static String TAG = "VLC/SecondaryDisplay";
 
