@@ -210,6 +210,10 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 	 */
 	// private final ArrayList<String> mSubtitleSelectedFiles = new
 	// ArrayList<String>();
+	
+    // Whether fallback from HW acceleration to SW decoding was done.
+    private boolean mDisabledHardwareAcceleration = false;
+    private int mPreviousHardwareAccelerationMode;
 
 	@Override
 	@TargetApi(Build.VERSION_CODES.JELLY_BEAN)
