@@ -280,7 +280,7 @@ public class VLCPlayerActivity extends PlayerBaseActivity implements IVideoPlaye
 		mInfo = (TextView) findViewById(R.id.player_overlay_info);
 
 		mEnableBrightnessGesture = mSettings.getBoolean("enable_brightness_gesture", true);
-		mScreenOrientation = Integer.valueOf(mSettings.getString("screen_orientation_value", "-1" /* SCREEN_ORIENTATION_SENSOR */));
+		mScreenOrientation = Integer.valueOf(mSettings.getString("screen_orientation_value", "-1" /* UNSPECIFIED */));
 
 		// mEnableJumpButtons = mSettings.getBoolean("enable_jump_buttons",
 		// false);
